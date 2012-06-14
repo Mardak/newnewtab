@@ -4,47 +4,41 @@
 
 "use strict";
 const {Ci,Cu,Cc} = require("chrome");
-const tabs = require("tabs");
-const {makeWindowHelpers} = require("makeWindowHelpers");
-const {unload} = require("unload+");
-const {watchWindows} = require("watchWindows");
 const {AppViewer} = require("appViewer");
-const {PageMod} = require("page-mod");
-const {data} = require("self");
-const {listen} = require("listen");
-const simplePrefs = require("simple-prefs");
-const file = require("file");
-const {XMLHttpRequest} = require("xhr");
-const timers = require("timers");
+const {Demographer} = require("Demographer");
+const tabs = require("tabs");
+const {watchWindows} = require("watchWindows");
 
 Cu.import("resource://gre/modules/Services.jsm", this);
-const PromptService = Cc["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
-const ObserverService = require("observer-service");
-const {Demographer} = require("Demographer");
+
+// list of hosts granted access permission to apps installation list
+const MOZAPP_PAGES_WHITE_LIST = [
+  "https://newnewtab.mozillalabs.com/",
+  "https://newnewtab-dev.mozillalabs.com/",
+  "https://newnewtab-stage.mozillalabs.com/"
+];
 
 /**
- * User profile object 
+ * User profile object
 */
 function UserProfile() {
-
-  let profile = this;
-
-  // create demographer
-  this.demographer = new Demographer( "AlexaSites.txt" );
-
+  this.demographer = new Demographer("Sites2Odp.txt");
 }
 
 const gUserProfile = new UserProfile();
 
-function addAppsButton( window , browser ) {
-
+function addAppsButton(window, browser) {
   let document = browser.contentDocument;
-  if( !document ) return; // sanity
-  let hisToggle = document.getElementById( "newtab-toggle");
-  if( ! hisToggle ) return;   // sanity
+  if (!document) {
+    return; // sanity
+  }
 
+  let hisToggle = document.getElementById("newtab-toggle");
+  if (!hisToggle) {
+    return; // sanity
+  }
 
-  let div = document.getElementById( "newtab-vertical-margin");
+  let div = document.getElementById("newtab-vertical-margin");
   let contentWindow = browser.contentWindow;
   let appToggle = hisToggle.cloneNode(true);
   appToggle.setAttribute("id", "apps-toggle");
@@ -55,53 +49,55 @@ function addAppsButton( window , browser ) {
   appToggle.style.top = "12px";
   appToggle.style.right = "40px";
   hisToggle.parentNode.insertBefore(appToggle, hisToggle.nextSibling);
-  var toggleStateShown = false;
-  var appViewer = new AppViewer( { 
-                      window: window,
-                      document: document,
-                      bElement: div,
-                      demographer: gUserProfile.demographer 
-                    });
+
+  let toggleStateShown = false;
+  let appViewer = new AppViewer({
+    window: window,
+    document: document,
+    bElement: div,
+    demographer: gUserProfile.demographer
+  });
 
   contentWindow.onresize = function onRes(event) {
-           appViewer.resize( );
+    appViewer.resize();
   };
 
-  appToggle.onclick = function( ) { 
-    
-    if( toggleStateShown ) { 
-        appViewer.hide( );
-        toggleStateShown = false;
-    } else {
-        appViewer.show( );
-        toggleStateShown = true;
-    }
-
-  };
-
-  var oldHandler = hisToggle.onclick;
-  hisToggle.onclick = function( ) {
-      appViewer.hide( );
+  appToggle.onclick = function() {
+    if (toggleStateShown) {
+      appViewer.hide();
       toggleStateShown = false;
-      oldHandler( );
-  }; 
+    }
+    else {
+      appViewer.show();
+      toggleStateShown = true;
+    }
+  };
 
+  let oldHandler = hisToggle.onclick;
+  hisToggle.onclick = function() {
+    appViewer.hide();
+    toggleStateShown = false;
+    oldHandler();
+  };
 }
 
 exports.main = function(options) {
+  // grant permissions to manage installed apps
+  MOZAPP_PAGES_WHITE_LIST.forEach(function(host) {
+    Services.perms.add(Services.io.newURI(host, null, null),
+      "webapps-manage",
+      Ci.nsIPermissionManager.ALLOW_ACTION);
+  });
 
-    // per-window initialization
-    watchWindows(function(window) {
+  // per-window initialization
+  watchWindows(function(window) {
     let {gBrowser} = window;
 
-     // Listen for tab content loads.
-     tabs.on('ready', function(tab) {
-     
-        if( tabs.activeTab.url == "about:newtab" ) {
-            addAppsButton( window , gBrowser );
-        }
-
-      });   // end of tabs.on.ready
-  });       // end of watchWindows 
-
+    // Listen for tab content loads.
+    tabs.on("ready", function(tab) {
+      if (tabs.activeTab.url == "about:newtab") {
+        addAppsButton(window, gBrowser);
+      }
+    }); // end of tabs.on.ready
+  }); // end of watchWindows
 }
